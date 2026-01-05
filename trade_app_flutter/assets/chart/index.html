@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TradingView Chart</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1c212e;
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .grabbing {
+            cursor: grabbing !important;
+        }
+
+        /* Context Menu Styles */
+        #context-menu {
+            position: absolute;
+            display: none;
+            background-color: #2b303f;
+            border: 1px solid #40445a;
+            border-radius: 4px;
+            padding: 5px;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .menu-btn {
+            display: block;
+            width: 100%;
+            background: none;
+            border: none;
+            color: #d1d4dc;
+            padding: 8px 15px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .menu-btn:hover {
+            background-color: #363a45;
+        }
+
+        .menu-btn.close-pos {
+            color: #fe5b5b;
+        }
+
+        .menu-btn.cancel-menu {
+            border-top: 1px solid #40445a;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        /* OVERLAY LABELS */
+        #label-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 50;
+        }
+
+        .line-label {
+            position: absolute;
+            left: 60px;
+            /* Shift right slightly to avoid sidebar collision if any */
+            left: 5px;
+            /* Keep it simple left */
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 10px;
+            /* Small font as requested */
+            font-family: sans-serif;
+            font-weight: bold;
+            color: white;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            opacity: 0.9;
+            transform: translateY(-50%);
+            transition: top 0.05s linear;
+        }
+
+        .label-buy {
+            background-color: #00cc00;
+        }
+
+        .label-sell {
+            background-color: #ff4444;
+        }
+
+        .label-tp {
+            background-color: #00cc00;
+        }
+
+        .label-sl {
+            background-color: #ff4444;
+        }
+    </style>
+    <!-- Load Local Library -->
+
+</head>
+
+<body>
+    <div id="label-overlay"></div>
+    <div id="chart-container"></div>
+    <div id="cancel-buttons-overlay"
+        style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden;"></div>
+    <script src="lightweight-charts.js"></script>
+    <script src="main.js"></script>
+</body>
+
+</html>
