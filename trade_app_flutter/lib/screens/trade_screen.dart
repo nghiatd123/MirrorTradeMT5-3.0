@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'login_screen.dart';
 import '../widgets/side_menu.dart';
+import '../api_config.dart';
 
 class TradeScreen extends StatefulWidget {
   final Function(String)? onSymbolSelected;
@@ -39,7 +40,7 @@ class _TradeScreenState extends State<TradeScreen> {
   }
 
   void _connectWebSocket() {
-    _channel = WebSocketChannel.connect(Uri.parse('ws://192.168.1.41:8000/ws/positions'));
+    _channel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/positions'));
     _channel!.stream.listen((message) {
       try {
         final data = jsonDecode(message);
@@ -99,7 +100,7 @@ class _TradeScreenState extends State<TradeScreen> {
   }
 
   Future<void> _closePosition(int ticket, String symbol, {bool silent = false}) async {
-    final url = Uri.parse('http://192.168.1.41:8000/close');
+    final url = Uri.parse('${ApiConfig.baseUrl}/close');
     try {
       final response = await http.post(
         url, 

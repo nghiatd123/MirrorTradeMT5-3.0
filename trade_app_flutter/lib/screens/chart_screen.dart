@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:async';
+import '../api_config.dart';
 
 class ChartScreen extends StatefulWidget {
   final VoidCallback? onMenuTap;
@@ -124,7 +125,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   Future<void> _closePosition(int ticket) async {
        // Use dedicated /close endpoint which handles volume lookup on backend
-       final url = Uri.parse('http://192.168.1.41:8000/close'); 
+       final url = Uri.parse('${ApiConfig.baseUrl}/close'); 
        
        try {
           final response = await http.post(
@@ -158,7 +159,7 @@ class ChartScreenState extends State<ChartScreen> {
     if (!_isChartReady) return;
 
     setState(() => _isLoading = true);
-    final url = Uri.parse('http://192.168.1.41:8000/history?symbol=$_symbol&timeframe=$_timeframe&count=500');
+    final url = Uri.parse('${ApiConfig.baseUrl}/history?symbol=$_symbol&timeframe=$_timeframe&count=500');
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -213,7 +214,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   Future<void> _fetchPositions() async {
     try {
-      final response = await http.get(Uri.parse('http://192.168.1.41:8000/positions'));
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/positions'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -230,7 +231,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   void _connectPositionsWebSocket() {
     if (_positionsChannel != null) _positionsChannel!.sink.close();
-    _positionsChannel = WebSocketChannel.connect(Uri.parse('ws://192.168.1.41:8000/ws/positions'));
+    _positionsChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/positions'));
     _positionsChannel!.stream.listen((message) {
       try {
         final data = jsonDecode(message);
@@ -255,7 +256,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   void _connectWebSocket() {
     if (_quotesChannel != null) _quotesChannel!.sink.close();
-    _quotesChannel = WebSocketChannel.connect(Uri.parse('ws://192.168.1.41:8000/ws/quotes'));
+    _quotesChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/quotes'));
     _quotesChannel!.stream.listen((message) {
       try {
         final data = jsonDecode(message);
@@ -330,7 +331,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   Future<void> _placeOrder(String action) async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sending $action..."), duration: const Duration(milliseconds: 500)));
-    final url = Uri.parse('http://192.168.1.41:8000/trade');
+    final url = Uri.parse('${ApiConfig.baseUrl}/trade');
     
     double vol = double.tryParse(_lotCtrl.text) ?? 0.01;
     _saveVolume(vol);
@@ -386,7 +387,7 @@ class ChartScreenState extends State<ChartScreen> {
   }
   
   Future<void> _modifyPosition(int ticket, String symbol, double sl, double tp) async {
-    final url = Uri.parse('http://192.168.1.41:8000/modify');
+    final url = Uri.parse('${ApiConfig.baseUrl}/modify');
     try {
       final response = await http.post(
         url,

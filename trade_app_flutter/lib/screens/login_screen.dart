@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart'; // Import for MainScreen
+import '../api_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -98,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      final url = Uri.parse('http://192.168.1.41:8000/login');
+      final url = Uri.parse('${ApiConfig.baseUrl}/login');
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
@@ -151,7 +152,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
                const Icon(Icons.candlestick_chart, size: 80, color: Colors.blue),
                const SizedBox(height: 20),
-               const Text("MT5 Connect", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+               const Text("ATrade-Connect", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                const SizedBox(height: 40),
 
                TextField(

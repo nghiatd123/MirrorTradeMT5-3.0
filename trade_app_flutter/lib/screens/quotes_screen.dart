@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert'; // Added for jsonDecode
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../api_config.dart';
 
 class QuotesScreen extends StatefulWidget {
   final VoidCallback? onMenuTap;
@@ -37,7 +38,7 @@ class _QuotesScreenState extends State<QuotesScreen> with AutomaticKeepAliveClie
 
   void _connectWebSocket() {
     // Single connection to the main stream
-    const String url = 'ws://192.168.1.41:8000/ws/quotes'; 
+    const String url = '${ApiConfig.wsUrl}/ws/quotes'; 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
       print("Connecting to $url");

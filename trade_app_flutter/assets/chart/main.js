@@ -136,16 +136,27 @@ function actionSetLine(type) {
 
     // Create line if not exists
     const entryPrice = group.data.price_open;
+    const currentPrice = group.data.price_current || entryPrice;
     const isBuy = group.data.type.toString().toUpperCase().includes("BUY");
 
-    // Default distances (approx 0.1%)
-    const delta = entryPrice * 0.001;
-    let targetPrice = entryPrice;
+    // Default distances (approx 0.2% relative to current price to avoid "Invalid Stops" close to market)
+    const delta = currentPrice * 0.002;
+    let targetPrice = currentPrice;
 
     if (type === 'TP') {
-        targetPrice = isBuy ? entryPrice + delta : entryPrice - delta;
+        // TP: Buy -> Must be > Current. Sell -> Must be < Current.
+        // We use max(entry, current) for Buy to ensure it's not "behind" us if in profit.
+        // But simply Current +/- delta is usually safe for TP.
+        // Let's use logic:
+        const base = isBuy ? Math.max(entryPrice, currentPrice) : Math.min(entryPrice, currentPrice);
+        targetPrice = isBuy ? base + delta : base - delta;
+
     } else {
-        targetPrice = isBuy ? entryPrice - delta : entryPrice + delta;
+        // SL: Buy -> Must be < Current (Bid). Sell -> Must be > Current (Ask).
+        // If price dropped below Entry (Buy), Entry-delta is > Current (Invalid).
+        // So we MUST use Current as base or min(Entry, Current).
+        const base = isBuy ? Math.min(entryPrice, currentPrice) : Math.max(entryPrice, currentPrice);
+        targetPrice = isBuy ? base - delta : base + delta;
     }
 
     // Send to Flutter to create/modify

@@ -33,7 +33,7 @@ def load_config():
     default_path = [os.getenv("MT5_PATH", r"C:\Program Files\MetaTrader 5\terminal64.exe")]
     if not os.path.exists(CONFIG_FILE):
         print(f"Config file {CONFIG_FILE} not found, using env or default.")
-        return default_path
+        return default_path, {}
     
     try:
         with open(CONFIG_FILE, "r") as f:
@@ -50,13 +50,15 @@ def load_config():
 
             if not sanitized_paths:
                 print("No paths in config, using default.")
-                return default_path
-            return sanitized_paths
+                return default_path, {}
+            
+            server_map = data.get("server_map", {})
+            return sanitized_paths, server_map
     except Exception as e:
         print(f"Error reading config: {e}")
-        return default_path
+        return default_path, {}
 
-TERMINAL_PATHS = load_config() 
+TERMINAL_PATHS, SERVER_MAP = load_config() 
 
 # === WORKER MANAGER ===
 class WorkerManager:
@@ -197,7 +199,15 @@ async def login_mt5(item: LoginRequest):
     # Determine worker
     worker_idx = manager.get_worker_index(item.login)
     
-    res = await manager.execute(worker_idx, "LOGIN", item.dict())
+    # Handle Server Alias
+    real_server = SERVER_MAP.get(item.server, item.server)
+    if real_server != item.server:
+        print(f"Server Alias: {item.server} -> {real_server}")
+    
+    login_data = item.dict()
+    login_data['server'] = real_server
+    
+    res = await manager.execute(worker_idx, "LOGIN", login_data)
     
     if res['status'] == 'error':
         raise HTTPException(status_code=400, detail=res['detail'])

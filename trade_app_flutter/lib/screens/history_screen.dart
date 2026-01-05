@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import '../api_config.dart';
 
 class HistoryScreen extends StatefulWidget {
   final VoidCallback? onMenuTap;
@@ -32,7 +33,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _fetchHistory() async {
     setState(() => _isLoading = true);
     try {
-      final url = Uri.parse('http://192.168.1.41:8000/trade_history');
+      final url = Uri.parse('${ApiConfig.baseUrl}/trade_history');
       
       String group = _activeTab; 
       
@@ -383,7 +384,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                         Text(_formatDate(pos['open_time']), style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                        Text("@ ${pos['open_price']}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text("@ ${(pos['open_price'] as num).toStringAsFixed(5)}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     ]
                  ),
                  const Icon(Icons.arrow_forward, color: Colors.grey, size: 14),
@@ -391,11 +392,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                         Text(_formatDate(pos['close_time']), style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                        Text("@ ${pos['close_price']}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text("@ ${(pos['close_price'] as num).toStringAsFixed(5)}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     ]
                  ),
               ]
-            )
+            ),
+            if ((pos['commission'] != null && pos['commission'] != 0) || (pos['swap'] != null && pos['swap'] != 0)) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                     if (pos['commission'] != null && pos['commission'] != 0) ...[
+                         Text("Comm: ${_currencyFmt.format(pos['commission'])}", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                         const SizedBox(width: 10),
+                     ],
+                     if (pos['swap'] != null && pos['swap'] != 0)
+                         Text("Swap: ${_currencyFmt.format(pos['swap'])}", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  ],
+                )
+            ]
          ],
        ),
      );
@@ -471,8 +485,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                     Text("${deal['price']} -> ", style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                     const Text("closed", style: TextStyle(color: Colors.white30, fontSize: 13)),
+                     Text("${deal['price']}", style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                     
+                     if (deal['commission'] != null && deal['commission'] != 0) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          "Comm: ${_currencyFmt.format(deal['commission'])}", 
+                          style: const TextStyle(color: Colors.white54, fontSize: 12)
+                        ),
+                     ],
+
+                     if (deal['swap'] != null && deal['swap'] != 0) ...[
+                        const SizedBox(width: 10),
+                         Text(
+                          "Swap: ${_currencyFmt.format(deal['swap'])}", 
+                          style: const TextStyle(color: Colors.white54, fontSize: 12)
+                        ),
+                     ]
                   ],
                 )
             ] else ...[
