@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert'; // Added for jsonDecode
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 import '../api_config.dart';
 
 class QuotesScreen extends StatefulWidget {
@@ -15,7 +16,9 @@ class QuotesScreen extends StatefulWidget {
 
 class _QuotesScreenState extends State<QuotesScreen> with AutomaticKeepAliveClientMixin {
   // Single WebSocket channel for all symbols
+  // Single WebSocket channel for all symbols
   WebSocketChannel? _channel;
+  StreamSubscription? _subscription;
   
   // Keep the state alive
   @override
@@ -30,6 +33,8 @@ class _QuotesScreenState extends State<QuotesScreen> with AutomaticKeepAliveClie
     {'symbol': 'BTCUSD', 'bid': 0.0, 'ask': 0.0, 'change': 0.0},
   ];
 
+  String _connectionStatus = "Disconnected";
+
   @override
   void initState() {
     super.initState();
@@ -37,28 +42,54 @@ class _QuotesScreenState extends State<QuotesScreen> with AutomaticKeepAliveClie
   }
 
   void _connectWebSocket() {
+    if (!mounted) return;
+
+    // Cleanup previous connection
+    _subscription?.cancel();
+    _channel?.sink.close();
+    _subscription = null;
+    _channel = null;
+
+    setState(() => _connectionStatus = "Connecting...");
+    
     // Single connection to the main stream
     const String url = '${ApiConfig.wsUrl}/ws/quotes'; 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
       print("Connecting to $url");
+      _channel = WebSocketChannel.connect(Uri.parse(url));
 
-      _channel!.stream.listen((message) {
-        final data = jsonDecode(message);
-        // data format: {symbol: "EURUSD", bid: 1.05, ask: 1.06 ...}
-        if (mounted) {
-          setState(() {
-            _updateQuote(data['symbol'], data['bid'], data['ask']);
-          });
+      _subscription = _channel!.stream.listen((message) {
+        if (_connectionStatus != "Connected") {
+             if (mounted) setState(() => _connectionStatus = "Connected");
+        }
+        try {
+          final data = jsonDecode(message);
+          if (mounted) {
+            setState(() {
+              _updateQuote(data['symbol'], data['bid'], data['ask']);
+            });
+          }
+        } catch (e) {
+          // print("WS Parse Error: $e");
         }
       }, onError: (error) {
         print("WS Error: $error");
+        if (mounted) setState(() => _connectionStatus = "Error: Network issue");
+        // Don't retry inside Error if Done also fires. Usually Done fires after Error.
       }, onDone: () {
         print("WS Closed. Reconnecting in 5s...");
-        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+        if (mounted) {
+           setState(() => _connectionStatus = "Closed (Retry in 5s)");
+           Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+        }
       });
     } catch (e) {
       print("Connection failed: $e");
+      if (mounted) {
+          setState(() => _connectionStatus = "Exception: Failed to connect");
+          // Retry even on initial exception
+          Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      }
     }
   }
 
@@ -109,7 +140,16 @@ class _QuotesScreenState extends State<QuotesScreen> with AutomaticKeepAliveClie
             icon: const Icon(Icons.menu),
             onPressed: () => widget.onMenuTap?.call(),
         ),
-        title: const Text("Quotes", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+                const Text("Quotes", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(_connectionStatus, style: TextStyle(
+                    fontSize: 12, 
+                    color: _connectionStatus == "Connected" ? Colors.greenAccent : Colors.redAccent
+                )),
+            ]
+        ),
         elevation: 0,
       ),
       body: ListView.separated(

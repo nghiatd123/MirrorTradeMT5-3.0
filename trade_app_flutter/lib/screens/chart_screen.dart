@@ -9,7 +9,8 @@ import '../api_config.dart';
 
 class ChartScreen extends StatefulWidget {
   final VoidCallback? onMenuTap;
-  const ChartScreen({super.key, this.onMenuTap});
+  final String login;
+  const ChartScreen({super.key, this.onMenuTap, required this.login});
 
   @override
   State<ChartScreen> createState() => ChartScreenState();
@@ -132,6 +133,7 @@ class ChartScreenState extends State<ChartScreen> {
             url,
             headers: {"Content-Type": "application/json"},
             body: jsonEncode({
+              "login": widget.login,
               "ticket": ticket,
               "symbol": _symbol,
             }),
@@ -159,7 +161,7 @@ class ChartScreenState extends State<ChartScreen> {
     if (!_isChartReady) return;
 
     setState(() => _isLoading = true);
-    final url = Uri.parse('${ApiConfig.baseUrl}/history?symbol=$_symbol&timeframe=$_timeframe&count=500');
+    final url = Uri.parse('${ApiConfig.baseUrl}/history?symbol=$_symbol&timeframe=$_timeframe&count=500&login=${widget.login}');
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -214,7 +216,7 @@ class ChartScreenState extends State<ChartScreen> {
 
   Future<void> _fetchPositions() async {
     try {
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/positions'));
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/positions?login=${widget.login}'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -230,21 +232,38 @@ class ChartScreenState extends State<ChartScreen> {
   }
 
   void _connectPositionsWebSocket() {
-    if (_positionsChannel != null) _positionsChannel!.sink.close();
-    _positionsChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/positions'));
-    _positionsChannel!.stream.listen((message) {
-      try {
-        final data = jsonDecode(message);
-        if (data is Map && data.containsKey('positions')) {
-           if (mounted) {
-             setState(() {
-                _positions = (data['positions'] as List).where((p) => p['symbol'] == _symbol).toList();
-             });
-             _pushPositionsToChart();
-           }
-        }
-      } catch (e) { }
-    });
+    _positionsChannel?.sink.close();
+    try {
+        _positionsChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/positions'));
+        _positionsChannel!.stream.listen((message) {
+          try {
+            final rawData = jsonDecode(message);
+            final String uid = widget.login.toString();
+            
+            if (rawData is Map && rawData.containsKey(uid)) {
+                final data = rawData[uid];
+                if (data is Map && data.containsKey('positions')) {
+                   if (mounted) {
+                     setState(() {
+                        _positions = (data['positions'] as List).where((p) => p['symbol'] == _symbol).toList();
+                     });
+                     _pushPositionsToChart();
+                   }
+                }
+            }
+          } catch (e) {
+             print("Chart Pos WS Parse Error: $e");
+          }
+        }, onError: (e) {
+             print("Chart Pos WS Error: $e");
+             if (mounted) Future.delayed(const Duration(seconds: 3), _connectPositionsWebSocket);
+        }, onDone: () {
+             print("Chart Pos WS Done");
+             if (mounted) Future.delayed(const Duration(seconds: 3), _connectPositionsWebSocket);
+        });
+    } catch(e) {
+        if (mounted) Future.delayed(const Duration(seconds: 3), _connectPositionsWebSocket);
+    }
   }
 
   void _pushPositionsToChart() {
@@ -255,20 +274,30 @@ class ChartScreenState extends State<ChartScreen> {
   }
 
   void _connectWebSocket() {
-    if (_quotesChannel != null) _quotesChannel!.sink.close();
-    _quotesChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/quotes'));
-    _quotesChannel!.stream.listen((message) {
-      try {
-        final data = jsonDecode(message);
-        if (data is Map && data.containsKey('symbol')) {
-           if (data['symbol'] == _symbol || (data['mt5_symbol'] != null && data['mt5_symbol'] == _symbol)) {
-              final double price = (data['bid'] as num).toDouble();
-              final num timeNum = data['time'] as num;
-              _processTick(price, timeNum.toInt());
-           }
-        }
-      } catch (e) { }
-    });
+    _quotesChannel?.sink.close();
+    try {
+        _quotesChannel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/quotes'));
+        _quotesChannel!.stream.listen((message) {
+          try {
+            final data = jsonDecode(message);
+            if (data is Map && data.containsKey('symbol')) {
+               if (data['symbol'] == _symbol || (data['mt5_symbol'] != null && data['mt5_symbol'] == _symbol)) {
+                  final double price = (data['bid'] as num).toDouble();
+                  final num timeNum = data['time'] as num;
+                  _processTick(price, timeNum.toInt());
+               }
+            }
+          } catch (e) { }
+        }, onError: (e) {
+             print("Chart Quotes WS Error: $e");
+             if (mounted) Future.delayed(const Duration(seconds: 3), _connectWebSocket);
+        }, onDone: () {
+             print("Chart Quotes WS Done");
+             if (mounted) Future.delayed(const Duration(seconds: 3), _connectWebSocket);
+        });
+    } catch(e) {
+        if (mounted) Future.delayed(const Duration(seconds: 3), _connectWebSocket);
+    }
   }
   
   double _currentBid = 0.0;
@@ -357,6 +386,7 @@ class ChartScreenState extends State<ChartScreen> {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
+          "login": widget.login,
           "action": action, 
           "symbol": _symbol, 
           "volume": vol, 
@@ -393,6 +423,7 @@ class ChartScreenState extends State<ChartScreen> {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
+          "login": widget.login,
           "ticket": ticket,
           "symbol": symbol,
           "sl": sl,

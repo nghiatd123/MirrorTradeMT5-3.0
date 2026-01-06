@@ -1,4 +1,4 @@
-package com.example.trade_app_flutter
+package com.axtrade.app
 
 import io.flutter.embedding.android.FlutterActivity
 

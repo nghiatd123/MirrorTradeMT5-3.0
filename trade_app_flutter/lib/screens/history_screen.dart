@@ -6,7 +6,8 @@ import '../api_config.dart';
 
 class HistoryScreen extends StatefulWidget {
   final VoidCallback? onMenuTap;
-  const HistoryScreen({super.key, this.onMenuTap});
+  final String login;
+  const HistoryScreen({super.key, this.onMenuTap, required this.login});
   
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -41,6 +42,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         "group": group,
         "from_date": _dateRange?.start.toIso8601String(),
         "to_date": _dateRange?.end.toIso8601String(),
+        "login": widget.login
       };
 
       final response = await http.post(

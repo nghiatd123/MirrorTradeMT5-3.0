@@ -5,3 +5,10 @@ __pycache__/
 .vscode/
 .DS_Store
 *.env
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log

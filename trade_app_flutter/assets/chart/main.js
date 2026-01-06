@@ -5,6 +5,7 @@ let activeLines = {}; // Store { ticket: { sl: PriceLine, tp: PriceLine, entry: 
 let isDragging = false;
 let draggedLine = null; // { type: 'sl'|'tp', ticket: int, originalPrice: float, lineObj: PriceLine }
 let dragStartY = 0;
+let globalLastClose = 0;
 
 const container = document.getElementById('chart-container');
 
@@ -134,28 +135,26 @@ function actionSetLine(type) {
     const group = activeLines[openMenuTicket];
     if (!group) return;
 
-    // Create line if not exists
     const entryPrice = group.data.price_open;
-    const currentPrice = group.data.price_current || entryPrice;
     const isBuy = group.data.type.toString().toUpperCase().includes("BUY");
 
-    // Default distances (approx 0.2% relative to current price to avoid "Invalid Stops" close to market)
-    const delta = currentPrice * 0.002;
-    let targetPrice = currentPrice;
+    // Use Last Chart Price (Fresher) or Position Price
+    let refPrice = group.data.price_current || entryPrice;
+    if (typeof globalLastClose !== 'undefined' && globalLastClose > 0) {
+        refPrice = globalLastClose;
+    }
+
+    // Default distances (approx 0.15% relative to ref price)
+    const delta = refPrice * 0.0015;
+    let targetPrice = refPrice;
 
     if (type === 'TP') {
-        // TP: Buy -> Must be > Current. Sell -> Must be < Current.
-        // We use max(entry, current) for Buy to ensure it's not "behind" us if in profit.
-        // But simply Current +/- delta is usually safe for TP.
-        // Let's use logic:
-        const base = isBuy ? Math.max(entryPrice, currentPrice) : Math.min(entryPrice, currentPrice);
+        const base = isBuy ? Math.max(entryPrice, refPrice) : Math.min(entryPrice, refPrice);
         targetPrice = isBuy ? base + delta : base - delta;
-
     } else {
-        // SL: Buy -> Must be < Current (Bid). Sell -> Must be > Current (Ask).
-        // If price dropped below Entry (Buy), Entry-delta is > Current (Invalid).
-        // So we MUST use Current as base or min(Entry, Current).
-        const base = isBuy ? Math.min(entryPrice, currentPrice) : Math.max(entryPrice, currentPrice);
+        // SL: Always relative to safer pricing (Lower for Buy, Higher for Sell)
+        // to avoid "Invalid Stops" if refPrice is ticking fast.
+        const base = isBuy ? Math.min(entryPrice, refPrice) : Math.max(entryPrice, refPrice);
         targetPrice = isBuy ? base - delta : base + delta;
     }
 
@@ -388,6 +387,7 @@ window.updateCurrentCandle = (jsonData) => {
 
 window.updateLastCandle = (time, open, high, low, close) => {
     if (!candleSeries) return;
+    globalLastClose = close;
     candleSeries.update({ time, open, high, low, close });
 };
 

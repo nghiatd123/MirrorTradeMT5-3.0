@@ -15,15 +15,40 @@ class MT5Worker(multiprocessing.Process):
         self.running = True
         self.current_account = None
 
+    def _resolve_symbol(self, symbol):
+        # 1. Try exact match (forces Market Watch selection if available)
+        if mt5.symbol_select(symbol, True):
+            return symbol
+            
+        # 2. Try prefix search (e.g. "EURUSD" -> "EURUSDm")
+        try:
+            matches = mt5.symbols_get(group=symbol + "*")
+            if matches and len(matches) > 0:
+                # Prioritize shortest match (usually the base + suffix)
+                # e.g. between EURUSDm and EURUSD_i, pick EURUSDm
+                matches = sorted(matches, key=lambda s: len(s.name))
+                best = matches[0].name
+                print(f"[Worker {self.worker_id}] Suffix match found: {best}", flush=True)
+                if mt5.symbol_select(best, True):
+                    return best
+        except Exception as e:
+            print(f"[Worker {self.worker_id}] Symbol resolve error: {e}", flush=True)
+            pass
+            
+        print(f"[Worker {self.worker_id}] No resolution found, returning original: {symbol}", flush=True)
+        return symbol # Return original as fallback
+
     def run(self):
-        print(f"[Worker {self.worker_id}] Starting... Path: {self.terminal_path}")
+        print(f"[Worker {self.worker_id}] Starting... Path: {self.terminal_path}", flush=True)
         
         # Initialize MT5 specific to this worker (Process Isolated)
         try:
-            if not mt5.initialize(path=self.terminal_path):
+            if not mt5.initialize(path=self.terminal_path, timeout=60000):
                 self.result_queue.put({"status": "error", "detail": f"Init failed: {mt5.last_error()}"})
                 return
-            print(f"[Worker {self.worker_id}] MT5 Initialized.")
+            
+            info = mt5.terminal_info()
+            print(f"[Worker {self.worker_id}] MT5 Initialized. Data Path: {info.data_path}", flush=True)
         except Exception as e:
             self.result_queue.put({"status": "error", "detail": f"Init Exception: {e}"})
             return
@@ -64,6 +89,8 @@ class MT5Worker(multiprocessing.Process):
                         result = self._handle_ticks(command["data"])
                     elif cmd_type == "TRADE_HISTORY":
                         result = self._handle_trade_history(command["data"])
+                    elif cmd_type == "CHECK_MARGIN":
+                        result = self._handle_check_margin(command["data"])
                     else:
                          result = {"status": "error", "detail": "Unknown command"}
                 except Exception as e:
@@ -94,9 +121,11 @@ class MT5Worker(multiprocessing.Process):
 
     def _handle_trade(self, item):
         # ... Reuse logic from main.py ...
-        symbol = item['symbol']
+        raw_symbol = item['symbol']
+        symbol = self._resolve_symbol(raw_symbol)
+        
         if not mt5.symbol_select(symbol, True):
-             return {"status": "error", "detail": "Symbol select failed"}
+             return {"status": "error", "detail": f"Symbol {symbol} select failed"}
 
         action = mt5.TRADE_ACTION_DEAL
         order_type = mt5.ORDER_TYPE_BUY if item['action'] == "BUY" else mt5.ORDER_TYPE_SELL
@@ -125,8 +154,9 @@ class MT5Worker(multiprocessing.Process):
             "price": price,
             "sl": item.get('sl', 0.0),
             "tp": item.get('tp', 0.0),
+            "tp": item.get('tp', 0.0),
             "magic": 234000,
-            "comment": "FlutterWorker",
+            "comment": item.get("comment", "FlutterWorker"),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -221,6 +251,7 @@ class MT5Worker(multiprocessing.Process):
                      "sl": p.sl, "tp": p.tp, "profit": p.profit,
                      "time": p.time, # timestamp
                      "status": "OPEN",
+                     "comment": p.comment,
                      "tick_value": 0.0, # Optimize: don't fetch symbol_info for every pos in worker loop, or do it?
                      "tick_size": 0.0   # Fast enough usually
                  })
@@ -245,7 +276,10 @@ class MT5Worker(multiprocessing.Process):
                      "price_current": 0.0,
                      "sl": o.sl, "tp": o.tp, "profit": 0.0,
                      "time": o.time_setup,
-                     "status": "PENDING"
+                     "sl": o.sl, "tp": o.tp, "profit": 0.0,
+                     "time": o.time_setup,
+                     "status": "PENDING",
+                     "comment": o.comment
                  })
         return data
 
@@ -256,6 +290,7 @@ class MT5Worker(multiprocessing.Process):
 
     def _handle_history(self, data):
         symbol = data.get('symbol')
+        print(f"[Worker {self.worker_id}] History Request for {symbol}", flush=True)
         timeframe = data.get('timeframe', 'M1')
         count = int(data.get('count', 300))
         
@@ -268,14 +303,26 @@ class MT5Worker(multiprocessing.Process):
         mt5_tf = tf_map.get(timeframe, mt5.TIMEFRAME_M1)
         
         # Ensure symbol is ready
-        if not mt5.symbol_select(symbol, True):
-             return {"status": "error", "detail": f"Symbol {symbol} select failed (History)"}
+        real_symbol = self._resolve_symbol(symbol)
+        
+        # Check login state debug
+        if self.current_account:
+            # print(f"[Worker {self.worker_id}] Logged in as: {self.current_account}", flush=True)
+            pass
+        else:
+            print(f"[Worker {self.worker_id}] WARNING: Not logged in context", flush=True)
+
+        if not mt5.symbol_select(real_symbol, True):
+             return {"status": "error", "detail": f"Symbol {real_symbol} select failed (History)"}
              
-        rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, count)
+        rates = mt5.copy_rates_from_pos(real_symbol, mt5_tf, 0, count)
         
         if rates is None:
-             return {"status": "error", "detail": f"Failed to get history for {symbol}"}
+             err = mt5.last_error()
+             print(f"[Worker {self.worker_id}] copy_rates failed for {real_symbol}. Error: {err}", flush=True)
+             return {"status": "error", "detail": f"Failed to get history for {symbol} ({real_symbol}): {err}"}
              
+        print(f"[Worker {self.worker_id}] Retrieved {len(rates)} rates for {real_symbol}", flush=True)
         data_list = []
         for rate in rates:
             data_list.append({
@@ -293,12 +340,13 @@ class MT5Worker(multiprocessing.Process):
         # Return dict of {symbol: {bid, ask...}}
         res = {}
         for s in symbols:
-             tick = mt5.symbol_info_tick(s)
+             real_s = self._resolve_symbol(s)
+             tick = mt5.symbol_info_tick(real_s)
              
              # If tick not found, try selecting it (forces allow in MarketWatch)
              if tick is None:
-                 if mt5.symbol_select(s, True):
-                     tick = mt5.symbol_info_tick(s)
+                 if mt5.symbol_select(real_s, True):
+                     tick = mt5.symbol_info_tick(real_s)
                      
              if tick:
                  res[s] = {"bid": tick.bid, "ask": tick.ask, "time": tick.time}
@@ -388,7 +436,9 @@ class MT5Worker(multiprocessing.Process):
                                 "commission": total_commission,
                                 "swap": total_swap,
                                 "net_profit": gross_profit + total_commission + total_swap,
-                                "time": exit_deal.time # Sort by close time
+                                "net_profit": gross_profit + total_commission + total_swap,
+                                "time": exit_deal.time, # Sort by close time
+                                "comment": entry_deal.comment # Use entry comment for metadata
                             }
                             data_list.append(pos_data)
                             
@@ -451,3 +501,31 @@ class MT5Worker(multiprocessing.Process):
             return {"status": "error", "detail": str(e)}
 
         return res
+
+    def _handle_check_margin(self, data):
+        symbol = data['symbol']
+        volume = float(data['volume'])
+        action_str = data['action'] # "BUY" or "SELL"
+        
+        # Resolve symbol
+        real_symbol = self._resolve_symbol(symbol)
+        
+        # Enum Map
+        action_type = mt5.ORDER_TYPE_BUY if action_str == "BUY" else mt5.ORDER_TYPE_SELL
+        
+        # Get Price
+        price = 0.0
+        tick = mt5.symbol_info_tick(real_symbol)
+        if tick:
+            price = tick.ask if action_type == mt5.ORDER_TYPE_BUY else tick.bid
+        
+        if price <= 0: return {"status": "error", "detail": "Price unavailable"}
+        
+        try:
+             margin = mt5.order_calc_margin(action_type, real_symbol, volume, price)
+             if margin is None:
+                 return {"status": "error", "detail": f"Margin calc failed: {mt5.last_error()}"}
+             
+             return {"status": "success", "margin": margin}
+        except Exception as e:
+             return {"status": "error", "detail": f"Margin Exception: {e}"}

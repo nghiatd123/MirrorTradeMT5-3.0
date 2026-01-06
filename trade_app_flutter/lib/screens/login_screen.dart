@@ -100,45 +100,71 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final url = Uri.parse('${ApiConfig.baseUrl}/login');
+      print("Attempting to connect to: $url");
+      
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "login": int.tryParse(login) ?? 0,
+          "login": login,
           "password": password,
           "server": server
         })
+
       );
 
-      final data = jsonDecode(response.body);
+      print("Response Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
 
-      if (response.statusCode == 200 && data['status'] == 'success') {
-        _addOrUpdateAccount(login, password, server);
-        
-        // Save Auto-Login flag
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('is_logged_in', true);
+      if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['status'] == 'success') {
+            _addOrUpdateAccount(login, password, server);
+            
+            // Save Auto-Login flag
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('is_logged_in', true);
 
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Login Successful!"), backgroundColor: Colors.green));
-        
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-          (route) => false
-        );
-
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Login Successful!"), backgroundColor: Colors.green));
+            
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+              (route) => false
+            );
+          } else {
+             if (!mounted) return;
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Failed: ${data['detail'] ?? 'Unknown error'}"), backgroundColor: Colors.red));
+          }
       } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Failed: ${data['detail'] ?? 'Unknown error'}"), backgroundColor: Colors.red));
+          // Non-200 Status
+          if (!mounted) return;
+          String errorMsg = "Server Error (${response.statusCode})";
+          try {
+             // Try to parse if it's JSON error
+             final errData = jsonDecode(response.body);
+             if (errData['detail'] != null) errorMsg += ": ${errData['detail']}";
+          } catch (_) {
+             // Likely HTML (Cloudflare or Nginx error)
+             if (response.body.contains("<!DOCTYPE html>")) {
+                 errorMsg += ": HTML Response (Check Cloudflare/Proxy)";
+             } else {
+                 errorMsg += ": ${response.body.substring(0, min(100, response.body.length))}...";
+             }
+          }
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
       }
 
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Network Error: $e"), backgroundColor: Colors.red));
+      print("Network Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Network Error: $e"), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  int min(int a, int b) => a < b ? a : b;
 
   @override
   Widget build(BuildContext context) {
@@ -157,10 +183,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
                TextField(
                  controller: _loginCtrl,
-                 keyboardType: TextInputType.number,
+                 keyboardType: TextInputType.text,
                  style: const TextStyle(color: Colors.white),
                  decoration: _inputDeco("Login ID", Icons.person),
                ),
+
                const SizedBox(height: 16),
                TextField(
                  controller: _passCtrl,

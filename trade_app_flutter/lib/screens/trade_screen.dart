@@ -10,7 +10,8 @@ import '../api_config.dart';
 class TradeScreen extends StatefulWidget {
   final Function(String)? onSymbolSelected;
   final VoidCallback? onMenuTap;
-  const TradeScreen({super.key, this.onSymbolSelected, this.onMenuTap});
+  final String login;
+  const TradeScreen({super.key, this.onSymbolSelected, this.onMenuTap, required this.login});
 
   @override
   State<TradeScreen> createState() => _TradeScreenState();
@@ -43,19 +44,25 @@ class _TradeScreenState extends State<TradeScreen> {
     _channel = WebSocketChannel.connect(Uri.parse('${ApiConfig.wsUrl}/ws/positions'));
     _channel!.stream.listen((message) {
       try {
-        final data = jsonDecode(message);
-        if (mounted) {
-          setState(() {
-            if (data.containsKey('account')) {
-              _accountInfo = data['account'];
-            }
-            if (data.containsKey('positions')) {
-              final allItems = data['positions'] as List;
-              _positions = allItems.where((i) => i['status'] == 'OPEN').toList();
-              _orders = allItems.where((i) => i['status'] == 'PENDING').toList();
-            }
-            _isConnected = true;
-          });
+        final rawData = jsonDecode(message);
+        // Backend sends { "123": { "account": ..., "positions": ... }, "456": ... }
+        final String uid = widget.login.toString();
+        
+        if (rawData.containsKey(uid)) {
+           final data = rawData[uid];
+           if (mounted) {
+              setState(() {
+                if (data.containsKey('account')) {
+                  _accountInfo = data['account'];
+                }
+                if (data.containsKey('positions')) {
+                  final allItems = data['positions'] as List;
+                  _positions = allItems.where((i) => i['status'] == 'OPEN').toList();
+                  _orders = allItems.where((i) => i['status'] == 'PENDING').toList();
+                }
+                _isConnected = true;
+              });
+           }
         }
       } catch (e) {
         print("Trade WS Error: $e");
@@ -105,7 +112,7 @@ class _TradeScreenState extends State<TradeScreen> {
       final response = await http.post(
         url, 
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"ticket": ticket, "symbol": symbol})
+        body: jsonEncode({"login": widget.login, "ticket": ticket, "symbol": symbol})
       );
       
       if (!silent && mounted) {
